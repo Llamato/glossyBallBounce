@@ -72,6 +72,7 @@ executable glossyBallBounce
     -- Other library packages from which modules are imported.
     build-depends:    base >=4.19.0.0
                     , gloss >=1.13.2.2
+                    , safe >=0.3.21 
 
     -- Directories containing source files.
     hs-source-dirs:   app

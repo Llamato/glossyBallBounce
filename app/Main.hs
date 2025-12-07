@@ -1,24 +1,37 @@
+{-# LANGUAGE DataKinds #-}
 module Main(main) where
 
 import Graphics.Gloss
-import Graphics.Gloss.Data.ViewPort
-import Graphics.Gloss.Data.Color
-
-data AnimationState = AnimationState {
+import Graphics.Gloss.Interface.IO.Game
+data Ball = Ball {
     position :: (Float, Float),
     velocity :: (Float, Float),
-    currentColor :: Int,
-    colors :: [Color]
+    currentColor :: Int
 }
+
+data GameState = GameState {
+    balls :: [Ball],
+    colors :: [Color],
+    currentMouseEvent :: Int
+}
+
+magnification :: Float
+magnification = 3
 
 windowWidth :: Int
 windowWidth = 320
 
+scaledWindowWidth :: Int
+scaledWindowWidth = floor (fromIntegral windowWidth * magnification)
+
 windowHeight :: Int
 windowHeight = 240
 
+scaledWindowHeight :: Int
+scaledWindowHeight = floor (fromIntegral windowHeight * magnification)
+
 windowPosX :: Int
-windowPosX = 32
+windowPosX = 10
 
 windowPosY :: Int
 windowPosY = 32
@@ -26,52 +39,112 @@ windowPosY = 32
 circleRadius :: Int
 circleRadius = 10
 
+scaledCircleRadius :: Int
+scaledCircleRadius = floor (fromIntegral circleRadius * magnification)
+
 window :: Display
-window = InWindow "Bouncy balls" (windowWidth, windowHeight) (windowPosX, windowPosY)
+window = InWindow "Bouncy balls" (scaledWindowWidth, scaledWindowHeight) (windowPosX, windowPosY)
 
 background :: Color
 background = black
 
-renderer :: AnimationState -> Picture
-renderer as = translate x y $ color ((colors as)!!(currentColor as)) $ circleSolid $ fromIntegral circleRadius
+renderBall :: Ball -> Picture
+renderBall ball = translate x y $ color (colors initialGameState!!currentColor ball) $ circleSolid $ fromIntegral scaledCircleRadius
     where
-        x = fst $ position as
-        y = snd $ position as
+        x = fst $ position ball
+        y = snd $ position ball
 
-iterator :: ViewPort -> Float -> AnimationState -> AnimationState
-iterator _ deltaTime as = AnimationState {
-    position = (nposx, nposy),
-    velocity = (nvx, nvy),
-    currentColor = ncolor,
-    colors = colors as
+renderer :: GameState -> Picture
+renderer as = pictures $ map renderBall (balls as)
+
+inputHandler :: Event -> GameState -> GameState
+inputHandler (EventKey (MouseButton LeftButton) Down _ mpos) as = if currentMouseEvent as == 0 then GameState {
+    balls = balls as ++ [Ball {
+        position = mpos,
+        velocity = (0, 0),
+        currentColor = (currentColor (last $ balls as)+1) `mod` length (colors as)
+    }],
+     colors = colors as,
+     currentMouseEvent = 1
+} else as
+
+inputHandler (EventKey (MouseButton LeftButton) Up _ mpos) as = let
+    ball = last $ balls as
+    bposx = fst $ position ball
+    bposy = snd $ position ball
+    mposx = fst mpos
+    mposy = snd mpos
+    bvx = mposx - bposx
+    bvy = mposy - bposy
+    in GameState {
+    balls = init (balls as) ++ [Ball {
+        position = position ball,
+        velocity = (bvx, bvy),
+        currentColor = currentColor ball
+    }],
+    colors = colors as,
+    currentMouseEvent = 0
 }
-    where
-        posx = fst $ position as
-        posy = snd $ position as
-        vx = fst $ velocity as
-        vy = snd $ velocity as
-        hborder = fromIntegral windowWidth / 2 - fromIntegral circleRadius
-        vborder = fromIntegral windowHeight / 2 - fromIntegral circleRadius
+
+inputHandler _ as = GameState {
+    balls = balls as,
+    colors = colors as,
+    currentMouseEvent = 0
+}
+
+iterator :: Float -> GameState -> GameState
+iterator deltaTime as = GameState {
+    balls = map (\ball -> let
+        posx = fst $ position ball
+        posy = snd $ position ball
+        vx = fst $ velocity ball
+        vy = snd $ velocity ball
         nvx = if abs posx >= hborder then -vx else vx
         nvy = if abs posy >= vborder then -vy else vy
         nposx = posx + nvx * deltaTime
         nposy = posy + nvy * deltaTime
-        ncolor = ((currentColor as)+if nvx /= vx || nvy /= vy then 1 else 0) `mod` length (colors as)
+        ncolor = (currentColor ball+fromEnum (nvx /= vx || nvy /= vy)) `mod` length (colors as)
+        in Ball {
+        position = (nposx, nposy),
+        velocity = (nvx, nvy),
+        currentColor = ncolor
+    }) (balls as),
+    colors = colors as,
+    currentMouseEvent = currentMouseEvent as
+}
+    where
+        hborder = fromIntegral scaledWindowWidth / 2 - fromIntegral scaledCircleRadius
+        vborder = fromIntegral scaledWindowHeight / 2 - fromIntegral scaledCircleRadius
 
 fps :: Int
 fps = 60
 
-initialAnimationState :: AnimationState
-initialAnimationState = AnimationState {
-    position = (0, 0),
-    velocity = (50, 50),
-    currentColor = 1,
+initialGameState :: GameState
+initialGameState = GameState {
+    balls = [
+        Ball {
+            position = (0, 0),
+            velocity = (50.0, 50.0),
+            currentColor = 0
+        },
+        Ball {
+            position = (0, 0),
+            velocity = (50.0, -50.0),
+            currentColor = 1
+        },
+        Ball {
+            position = (0, 0),
+            velocity = (-50.0, 50.0),
+            currentColor = 2
+        }
+    ],
     colors = [
         makeColor ((6*16+7)/256) ((10*16+5)/256) ((13*16+14)/256) 1,
         makeColor 1 1 1 1,
         makeColor ((13*16+7)/256) ((8*16+12)/256) ((9*16+8)/256) 1
-    ]
+    ],
+    currentMouseEvent = 0
 }
 
 main :: IO ()
-main = simulate window background fps initialAnimationState renderer iterator
+main = play window background fps initialGameState renderer inputHandler iterator
