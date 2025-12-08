@@ -178,7 +178,7 @@ handleWallCollision ball = let
 
 iterator :: Float -> GameState -> GameState
 iterator deltaTime as = GameState {
-    balls = map (\ball -> let
+    balls = (processCollisions . map (\ball -> let
        posx = fst $ position ball
        posy = snd $ position ball
 
@@ -191,13 +191,13 @@ iterator deltaTime as = GameState {
        position = (nposx, nposy),
        velocity = velocity wallBall,
        currentColor = currentColor wallBall
-   }) (balls as),
+   })) (balls as),
     colors = colors as,
     currentMouseEvent = currentMouseEvent as
 }
 
 fps :: Int
-fps = 60
+fps = 320
 
 initialGameState :: GameState
 initialGameState = GameState {
