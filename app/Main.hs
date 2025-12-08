@@ -115,48 +115,39 @@ handleCollision ball1 ball2 = let
     (normalX, normalY) = if distance > 0 then (deltaX/distance, deltaY/distance) else (1, 0)
     (dvx, dvy) = (vx1 - vx2, vy1 - vy2)
     velocityAlongNormal = dvx * normalX + dvy * normalY
-    in if velocityAlongNormal > 0 then (ball1, ball2) else let
-        impulse = 2 * fromIntegral scaledCircleRadius - distance
-        (newVx1, newVy1) = (vx1 - impulse * normalX, vy1 - impulse * normalY)
-        (newVx2, newVy2) = (vx2 + impulse * normalX, vy2 + impulse * normalY)
+    impulse = velocityAlongNormal -- Added distinction between velocity and impulse in case we ever want to implement different masses 
+    (newVx1, newVy1) = (vx1 - impulse * normalX, vy1 - impulse * normalY)
+    (newVx2, newVy2) = (vx2 + impulse * normalX, vy2 + impulse * normalY)
+    in (
+      Ball { position = position ball1, velocity = (newVx1, newVy1), currentColor = currentColor ball1 },
+      Ball { position = position ball2, velocity = (newVx2, newVy2), currentColor = currentColor ball2 }
+    )
 
-        overlap = 2 * fromIntegral scaledCircleRadius - distance
-        separation = if distance > 0 then overlap / 2 else fromIntegral scaledCircleRadius
-        (sepX, sepY) = (separation * normalX, separation * normalY)
-
-        (newX1, newY1) = (x1 - sepX, y1 - sepY)
-        (newX2, newY2) = (x2 + sepX, y2 + sepY)
-    in
-        ( Ball {
-            position = (newX1, newY1),
-            velocity = (newVx1, newVy1),
-            currentColor = currentColor ball1
-            },
-            Ball {
-                position = (newX2, newY2),
-                velocity = (newVx2, newVy2),
-                currentColor = currentColor ball2
-            }
-        )
+collisionStates :: [Ball] -> ([Ball], Bool)
+collisionStates balls = foldl' checkPair (balls, False) allPairs
+  where
+    allPairs = [(i, j) | i <- [0..length balls - 1], j <- [i+1..length balls - 1]]
+    checkPair :: ([Ball], Bool) -> (Int, Int) -> ([Ball], Bool)
+    checkPair (currentBalls, hadCollision) (i, j) = let 
+      ballI = currentBalls !! i
+      ballJ = currentBalls !! j
+        in if areColliding ballI ballJ then let 
+              (newI, newJ) = handleCollision ballI ballJ
+              updatedBalls = replace i newI $ replace j newJ currentBalls
+              in (updatedBalls, True) else (currentBalls, hadCollision)
+    replace :: Int -> a -> [a] -> [a]
+    replace idx newVal xs = take idx xs ++ [newVal] ++ drop (idx+1) xs
 
 processCollisions :: [Ball] -> [Ball]
-processCollisions balls = M.elems $ foldl' process (M.fromList (zip [0..] balls)) [0..length balls - 1]
-  where
-    process :: M.Map Int Ball -> Int -> M.Map Int Ball
-    process ballMap idx = 
-        case M.lookup idx ballMap of
-            Nothing -> ballMap
-            Just ball -> foldl' (checkIdx idx) ballMap [(idx+1)..M.size ballMap - 1]
-    
-    checkIdx :: Int -> M.Map Int Ball -> Int -> M.Map Int Ball
-    checkIdx idx ballMap otherIdx =
-        case (M.lookup idx ballMap, M.lookup otherIdx ballMap) of
-            (Just ball, Just otherBall) ->
-                if areColliding ball otherBall
-                then let (newBall, newOther) = handleCollision ball otherBall
-                     in M.insert idx newBall (M.insert otherIdx newOther ballMap)
-                else ballMap
-            _ -> ballMap
+processCollisions balls =
+    let (collided, anyCollisions) = collisionStates balls
+    in map (\ball -> Ball {
+      position = position ball,
+      velocity = velocity ball,
+      currentColor = (currentColor ball+fromEnum anyCollisions) `mod` length (colors initialGameState)
+    }
+    ) collided
+  
 
 handleWallCollision :: Ball -> Ball
 handleWallCollision ball = let
@@ -176,44 +167,48 @@ handleWallCollision ball = let
         hborder = fromIntegral scaledWindowWidth / 2 - fromIntegral scaledCircleRadius
         vborder = fromIntegral scaledWindowHeight / 2 - fromIntegral scaledCircleRadius
 
+repositionBall :: Float -> Ball -> Ball
+repositionBall deltaTime ball = let
+    (posx, posy) = position ball
+    (vx, vy) = velocity ball
+    npos = (posx + vx * deltaTime, posy + vy * deltaTime)
+    in Ball {
+      position = npos,
+      velocity = (vx, vy),
+      currentColor = currentColor ball
+    }
+
 iterator :: Float -> GameState -> GameState
-iterator deltaTime as = GameState {
-    balls = (processCollisions . map (\ball -> let
-       posx = fst $ position ball
-       posy = snd $ position ball
-
-       wallBall = handleWallCollision ball
-       (nvx, nvy) = velocity wallBall
-       nposx = posx + nvx * deltaTime
-       nposy = posy + nvy * deltaTime
-
-       in Ball {
-       position = (nposx, nposy),
-       velocity = velocity wallBall,
-       currentColor = currentColor wallBall
-   })) (balls as),
-    colors = colors as,
-    currentMouseEvent = currentMouseEvent as
-}
+iterator deltaTime as =
+    let
+        current = balls as
+        collisions = processCollisions current
+        walls = map handleWallCollision collisions
+        moved = map (repositionBall deltaTime) walls
+    in GameState {
+        balls = moved,
+        colors = colors as,
+        currentMouseEvent = currentMouseEvent as
+    }
 
 fps :: Int
-fps = 320
+fps = 1000
 
 initialGameState :: GameState
 initialGameState = GameState {
     balls = [
         Ball {
-            position = (0, 0),
+            position = (50, 50),
             velocity = (50.0, 50.0),
             currentColor = 0
         },
         Ball {
-            position = (0, 0),
+            position = (50, -50),
             velocity = (50.0, -50.0),
             currentColor = 1
         },
         Ball {
-            position = (0, 0),
+            position = (-50, 50),
             velocity = (-50.0, 50.0),
             currentColor = 2
         }
