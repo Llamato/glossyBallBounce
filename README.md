@@ -1,4 +1,5 @@
-lso known as glossyBouncyBalls.
+# Bouncing balls with Gloss
+Also known as glossyBouncyBalls.
 
 ### Gameplay
 1. Watch the balls bounce
