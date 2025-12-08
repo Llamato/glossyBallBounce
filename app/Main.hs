@@ -51,6 +51,9 @@ window = InWindow "Bouncy balls" (scaledWindowWidth, scaledWindowHeight) (window
 background :: Color
 background = black
 
+replace :: Int -> a -> [a] -> [a]
+replace idx newVal xs = take idx xs ++ [newVal] ++ drop (idx+1) xs
+
 renderBall :: Ball -> Picture
 renderBall ball = translate x y $ color (colors initialGameState!!currentColor ball) $ circleSolid $ fromIntegral scaledCircleRadius
     where
@@ -123,31 +126,30 @@ handleCollision ball1 ball2 = let
       Ball { position = position ball2, velocity = (newVx2, newVy2), currentColor = currentColor ball2 }
     )
 
-collisionStates :: [Ball] -> ([Ball], Bool)
-collisionStates balls = foldl' checkPair (balls, False) allPairs
+collisionStates :: [Ball] -> [(Ball, Bool)]
+collisionStates balls = uncurry zip (foldl' checkPair (balls, replicate (length balls) False) allPairs)
   where
     allPairs = [(i, j) | i <- [0..length balls - 1], j <- [i+1..length balls - 1]]
-    checkPair :: ([Ball], Bool) -> (Int, Int) -> ([Ball], Bool)
-    checkPair (currentBalls, hadCollision) (i, j) = let 
+    checkPair :: ([Ball], [Bool]) -> (Int, Int) -> ([Ball], [Bool])
+    checkPair (currentBalls, hadCollisions) (i, j) = let
       ballI = currentBalls !! i
       ballJ = currentBalls !! j
-        in if areColliding ballI ballJ then let 
+        in if areColliding ballI ballJ then let
               (newI, newJ) = handleCollision ballI ballJ
               updatedBalls = replace i newI $ replace j newJ currentBalls
-              in (updatedBalls, True) else (currentBalls, hadCollision)
-    replace :: Int -> a -> [a] -> [a]
-    replace idx newVal xs = take idx xs ++ [newVal] ++ drop (idx+1) xs
+              updatedCollisions = replace i True $ replace j True hadCollisions
+              in (updatedBalls, updatedCollisions) else (currentBalls, hadCollisions)
 
 processCollisions :: [Ball] -> [Ball]
-processCollisions balls =
-    let (collided, anyCollisions) = collisionStates balls
-    in map (\ball -> Ball {
-      position = position ball,
-      velocity = velocity ball,
-      currentColor = (currentColor ball+fromEnum anyCollisions) `mod` length (colors initialGameState)
-    }
-    ) collided
-  
+processCollisions balls = map (\pair -> let
+                            ball = fst pair
+                            collision = snd pair
+                          in Ball {
+                            position = position ball,
+                            velocity = velocity ball,
+                            currentColor = (currentColor ball+fromEnum collision) `mod` length (colors initialGameState)
+                        }) (collisionStates balls)
+
 
 handleWallCollision :: Ball -> Ball
 handleWallCollision ball = let
