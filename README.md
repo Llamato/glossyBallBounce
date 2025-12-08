@@ -17,3 +17,5 @@ Make sure all of the following external dependencies are installed:
 - **Cabal**: A package manager for Haskell applications and libraries, used to build the project and its Haskell-based dependencies
 
 With all external dependencies installed, run `cabal run` in the project directory. You should see a black window with three large, colorful bouncing balls. Enjoy!
+
+Alternatively flake.nix and flake.lock files are provided with the project files so the demo can easily be installed using the nix package manager
