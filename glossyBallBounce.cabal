@@ -56,41 +56,7 @@ extra-doc-files:    CHANGELOG.md
 common warnings
     ghc-options: -Wall
 
-
-library
-    -- Import common warning flags.
-    import:           warnings
-
-    -- Modules exported by the library.
-    exposed-modules:  
-        PlaySound2
-
-    -- Modules included in this library but not exported.
-    -- other-modules:
-
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
-
-    -- Other library packages from which modules are imported.
-    build-depends:    
-        base >= 4.7 && < 5,
-        directory,
-        bytestring >=0.10.4.0,
-        sdl2 >= 2.5.5.1,
-        sdl2-mixer >=1.2.0.0,
-        monad-control >= 1.0
-
-    -- Directories containing source files.
-    hs-source-dirs:   lib
-
-    -- Base language which the package is written in.
-    default-language: Haskell2010
-
 executable glossyBallBounce
-    -- Windows console compatiblity
-    if os(windows)
-    ghc-options: -optl-mconsole
-
     -- Import common warning flags.
     import:           warnings
 
@@ -107,8 +73,7 @@ executable glossyBallBounce
     build-depends: 
                     , base >=4.19.0.0
                     , gloss >=1.13.2.2
-                    , containers >=0.6.8
-                    , sdl2 >= 2.0.0
+                    , containers ^>=0.6.8
 
     -- Directories containing source files.
     hs-source-dirs:   app
