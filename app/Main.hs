@@ -1,10 +1,21 @@
 {-# LANGUAGE DataKinds #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# OPTIONS_GHC -Wno-unused-matches #-}
+{-# OPTIONS_GHC -Wno-unused-do-bind #-}
 module Main(main) where
 
+--Gloss
 import Graphics.Gloss
 import Graphics.Gloss.Interface.IO.Game
-import qualified Data.Map as M
-import Data.List (foldl')
+
+--OpenAL
+import Control.Monad ( when, unless )
+import Control.Concurrent
+import Data.List ( intercalate, foldl' )
+import Sound.ALUT
+import System.Exit ( exitFailure )
+import System.IO ( hPutStrLn, stderr )
+import qualified Graphics.Gloss.Interface.IO.Game as Graphics.Gloss
 
 data Ball = Ball {
     position :: (Float, Float),
@@ -15,7 +26,9 @@ data Ball = Ball {
 data GameState = GameState {
     balls :: [Ball],
     colors :: [Color],
-    currentMouseEvent :: Int
+    currentMouseEvent :: Int,
+    currentCollisions :: Int,
+    bounceSoundSource :: Source
 }
 
 magnification :: Float
@@ -42,6 +55,12 @@ windowPosY = 32
 circleRadius :: Int
 circleRadius = 10
 
+hborder :: Float
+hborder = fromIntegral scaledWindowWidth / 2 - fromIntegral scaledCircleRadius
+
+vborder :: Float
+vborder = fromIntegral scaledWindowHeight / 2 - fromIntegral scaledCircleRadius
+
 scaledCircleRadius :: Int
 scaledCircleRadius = floor (fromIntegral circleRadius * magnification)
 
@@ -50,6 +69,14 @@ window = InWindow "Bouncy balls" (scaledWindowWidth, scaledWindowHeight) (window
 
 background :: Color
 background = black
+
+playBounceSound :: IO ()
+playBounceSound = playFile "assets/bounce.wav"
+
+playBounceSounds :: Int -> IO ()
+playBounceSounds collisionCount = do 
+    playBounceSound
+    unless (collisionCount == 0) (playBounceSounds (collisionCount - 1))
 
 replace :: Int -> a -> [a] -> [a]
 replace idx newVal xs = take idx xs ++ [newVal] ++ drop (idx+1) xs
@@ -71,7 +98,8 @@ inputHandler (EventKey (MouseButton LeftButton) Down _ mpos) as = if currentMous
         currentColor = (currentColor (last $ balls as)+1) `mod` length (colors as)
     }],
      colors = colors as,
-     currentMouseEvent = 1
+     currentMouseEvent = 1,
+     currentCollisions = currentCollisions as
 } else as
 
 inputHandler (EventKey (MouseButton LeftButton) Up _ mpos) as = let
@@ -89,85 +117,95 @@ inputHandler (EventKey (MouseButton LeftButton) Up _ mpos) as = let
         currentColor = currentColor ball
     }],
     colors = colors as,
-    currentMouseEvent = 0
+    currentMouseEvent = 0,
+    currentCollisions = currentCollisions as
 }
 
 inputHandler _ as = GameState {
     balls = balls as,
     colors = colors as,
-    currentMouseEvent = 0
+    currentMouseEvent = 0,
+    currentCollisions = currentCollisions as
 }
 
-areColliding :: Ball -> Ball -> Bool
-areColliding ball1 ball2 = let
-    (x1, y1) = position ball1
-    (x2, y2) = position ball2
-    dx = x1 - x2
-    dy = y1 - y2
-    distance = sqrt (dx*dx + dy*dy)
-    in distance < 2 * fromIntegral scaledCircleRadius
+areBallsColliding :: Ball -> Ball -> Bool
+areBallsColliding ball1 ball2 = let
+         (x1, y1) = position ball1
+         (x2, y2) = position ball2
+         dx = x1 - x2
+         dy = y1 - y2
+         distance = sqrt (dx*dx + dy*dy)
+         in distance < 2 * fromIntegral scaledCircleRadius
 
-handleCollision :: Ball -> Ball -> (Ball, Ball)
-handleCollision ball1 ball2 = let
-    (x1, y1) = position ball1
-    (x2, y2) = position ball2
-    (vx1, vy1) = velocity ball1
-    (vx2, vy2) = velocity ball2
-    (deltaX, deltaY) = (x2 - x1, y2 - y1)
-    distance = sqrt (deltaX * deltaX + deltaY * deltaY)
-    (normalX, normalY) = if distance > 0 then (deltaX/distance, deltaY/distance) else (1, 0)
-    (dvx, dvy) = (vx1 - vx2, vy1 - vy2)
-    velocityAlongNormal = dvx * normalX + dvy * normalY
-    impulse = velocityAlongNormal -- Added distinction between velocity and impulse in case we ever want to implement different masses 
-    (newVx1, newVy1) = (vx1 - impulse * normalX, vy1 - impulse * normalY)
-    (newVx2, newVy2) = (vx2 + impulse * normalX, vy2 + impulse * normalY)
-    in (
-      Ball { position = position ball1, velocity = (newVx1, newVy1), currentColor = currentColor ball1 },
-      Ball { position = position ball2, velocity = (newVx2, newVy2), currentColor = currentColor ball2 }
-    )
+handleBallCollision :: Ball -> Ball -> (Ball, Ball)
+handleBallCollision ball1 ball2 = let
+        (x1, y1) = position ball1
+        (x2, y2) = position ball2
+        (vx1, vy1) = velocity ball1
+        (vx2, vy2) = velocity ball2
+        (deltaX, deltaY) = (x2 - x1, y2 - y1)
+        distance = sqrt (deltaX * deltaX + deltaY * deltaY)
+        (normalX, normalY) = if distance > 0 then (deltaX/distance, deltaY/distance) else (1, 0)
+        (dvx, dvy) = (vx1 - vx2, vy1 - vy2)
+        velocityAlongNormal = dvx * normalX + dvy * normalY
+        impulse = velocityAlongNormal
+        (newVx1, newVy1) = (vx1 - impulse * normalX, vy1 - impulse * normalY)
+        (newVx2, newVy2) = (vx2 + impulse * normalX, vy2 + impulse * normalY)
+        in (
+          Ball { position = position ball1, velocity = (newVx1, newVy1), currentColor = currentColor ball1 },
+          Ball { position = position ball2, velocity = (newVx2, newVy2), currentColor = currentColor ball2 }
+        )
 
-collisionStates :: [Ball] -> [(Ball, Bool)]
-collisionStates balls = uncurry zip (foldl' checkPair (balls, replicate (length balls) False) allPairs)
+ballBallCollisionStates :: [Ball] -> [(Ball, Bool)]
+ballBallCollisionStates balls = uncurry zip (foldl' checkPair (balls, replicate (length balls) False) allPairs)
   where
     allPairs = [(i, j) | i <- [0..length balls - 1], j <- [i+1..length balls - 1]]
     checkPair :: ([Ball], [Bool]) -> (Int, Int) -> ([Ball], [Bool])
     checkPair (currentBalls, hadCollisions) (i, j) = let
       ballI = currentBalls !! i
       ballJ = currentBalls !! j
-        in if areColliding ballI ballJ then let
-              (newI, newJ) = handleCollision ballI ballJ
-              updatedBalls = replace i newI $ replace j newJ currentBalls
-              updatedCollisions = replace i True $ replace j True hadCollisions
-              in (updatedBalls, updatedCollisions) else (currentBalls, hadCollisions)
+        in if areBallsColliding ballI ballJ then let
+                   (newI, newJ) = handleBallCollision ballI ballJ
+                   updatedBalls = replace i newI $ replace j newJ currentBalls
+                   updatedCollisions = replace i True $ replace j True hadCollisions
+                   in (updatedBalls, updatedCollisions) else (currentBalls, hadCollisions)
 
-processCollisions :: [Ball] -> [Ball]
-processCollisions balls = map (\pair -> let
-                            ball = fst pair
-                            collision = snd pair
-                          in Ball {
-                            position = position ball,
-                            velocity = velocity ball,
-                            currentColor = (currentColor ball+fromEnum collision) `mod` length (colors initialGameState)
-                        }) (collisionStates balls)
+processBallBallCollisions :: [Ball] -> ([Ball], Int)
+processBallBallCollisions balls = let states = ballBallCollisionStates balls in
+    (map (\pair -> let
+        ball = fst pair
+        collision = snd pair
+        in Ball {
+            position = position ball,
+            velocity = velocity ball,
+            currentColor = (currentColor ball+fromEnum collision) `mod` length (colors initialGameState)
+        }) states, sum (map (fromEnum . snd) states))
 
+ballWallCollisionState :: Ball -> (Bool, Bool)
+ballWallCollisionState ball = let
+   posx = fst $ position ball
+   posy = snd $ position ball
+   in (abs posx >= hborder , abs posy >= vborder)
 
 handleWallCollision :: Ball -> Ball
 handleWallCollision ball = let
-    posx = fst $ position ball
-    posy = snd $ position ball
     vx = fst $ velocity ball
     vy = snd $ velocity ball
-    nvx = if abs posx >= hborder then -vx else vx
-    nvy = if abs posy >= vborder then -vy else vy
-    ncolor = (currentColor ball+fromEnum (nvx /= vx || nvy /= vy)) `mod` length (colors initialGameState)
+    (hborderCollision, vborderCollision) = ballWallCollisionState ball
+    nvx = if hborderCollision then -vx else vx
+    nvy = if vborderCollision then -vy else vy
+    ncolor = (currentColor ball+fromEnum  (hborderCollision || vborderCollision)) `mod` length (colors initialGameState)
     in Ball {
         position = position ball,
         velocity = (nvx, nvy),
         currentColor = ncolor
     }
-    where
-        hborder = fromIntegral scaledWindowWidth / 2 - fromIntegral scaledCircleRadius
-        vborder = fromIntegral scaledWindowHeight / 2 - fromIntegral scaledCircleRadius
+
+processBallWallCollisions :: [Ball] -> ([Ball], Int)
+processBallWallCollisions balls = (
+        map handleWallCollision balls,
+        sum (map ((fromEnum . uncurry (||)) . ballWallCollisionState) balls)
+    )
 
 repositionBall :: Float -> Ball -> Ball
 repositionBall deltaTime ball = let
@@ -180,21 +218,26 @@ repositionBall deltaTime ball = let
       currentColor = currentColor ball
     }
 
-iterator :: Float -> GameState -> GameState
+iterator :: Float -> GameState -> IO GameState
 iterator deltaTime as =
     let
-        current = balls as
-        collisions = processCollisions current
-        walls = map handleWallCollision collisions
-        moved = map (repositionBall deltaTime) walls
-    in GameState {
-        balls = moved,
-        colors = colors as,
-        currentMouseEvent = currentMouseEvent as
-    }
+        (afterBallBallCollisions, ballBallCollisionCount) = processBallBallCollisions (balls as)
+        (afterBallWallCollisions, wallBallCollisionCount) = processBallWallCollisions afterBallBallCollisions
+        moved = map (repositionBall deltaTime) afterBallWallCollisions
+        collisionCount = ballBallCollisionCount + wallBallCollisionCount
+    in do
+        when (collisionCount > 0) $ do
+            playBounceSound
+            return ()
+        return GameState {
+            balls = moved,
+            colors = colors as,
+            currentMouseEvent = currentMouseEvent as,
+            currentCollisions = ballBallCollisionCount + wallBallCollisionCount
+        }
 
 fps :: Int
-fps = 1000
+fps = 320
 
 initialGameState :: GameState
 initialGameState = GameState {
@@ -220,8 +263,27 @@ initialGameState = GameState {
         makeColor 1 1 1 1,
         makeColor ((13*16+7)/256) ((8*16+12)/256) ((9*16+8)/256) 1
     ],
-    currentMouseEvent = 0
+    currentMouseEvent = 0,
+    currentCollisions = 0
 }
 
+gameloop :: IO ()
+gameloop = Graphics.Gloss.playIO window background fps initialGameState (return . renderer) (\event gs -> return $ inputHandler event gs) iterator
+
+playFile :: FilePath -> IO ()
+playFile fileName = do
+   buf <- createBuffer (File fileName)
+   source <- genObjectName
+   buffer source $= Just buf
+   Sound.ALUT.play [source]
+   errs <- get alErrors
+   unless (null errs) $ do
+      hPutStrLn stderr (intercalate "," ([ d | ALError _ d <- errs ]))
+      exitFailure
+      --Refactor sound playback to use sources in memory directly.
+
 main :: IO ()
-main = play window background fps initialGameState renderer inputHandler iterator
+main = do
+    withProgNameAndArgs runALUT $ \progName args -> do
+        playFile "assets/bounce.wav"
+        gameloop

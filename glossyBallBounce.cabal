@@ -74,6 +74,9 @@ executable glossyBallBounce
                     , base >=4.19.0.0
                     , gloss >=1.13.2.2
                     , containers ^>=0.6.8
+                    , OpenAL >= 1.7.0
+                    , ALUT >= 2.4.0
+                    , async >= 2.2
 
     -- Directories containing source files.
     hs-source-dirs:   app

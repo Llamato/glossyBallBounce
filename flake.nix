@@ -30,14 +30,18 @@
           hPkgs.haskell-language-server # LSP server for editor
           hPkgs.implicit-hie # auto generate LSP hie.yaml file from cabal
           hPkgs.retrie # Haskell refactoring tool
-          # hPkgs.cabal-install
+          hPkgs.cabal-install
           stack-wrapped
           
           # External dependencies of gloss
           pkgs.libGL
           pkgs.libGLU
           pkgs.freeglut
-          hPkgs.cabal-install
+
+          # External dependencies of openAL
+          pkgs.openal
+          pkgs.freealut
+          
         ];
 
         # Wrap Stack to work with our Nix integration. We do not want to modify
