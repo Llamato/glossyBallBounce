@@ -7,15 +7,15 @@ module Main(main) where
 --Gloss
 import Graphics.Gloss
 import Graphics.Gloss.Interface.IO.Game
+import qualified Graphics.Gloss.Interface.IO.Game as Graphics.Gloss
 
 --OpenAL
-import Control.Monad ( when, unless )
+import Control.Monad 
 import Control.Concurrent
-import Data.List ( intercalate, foldl' )
+import Data.List
 import Sound.ALUT
-import System.Exit ( exitFailure )
-import System.IO ( hPutStrLn, stderr )
-import qualified Graphics.Gloss.Interface.IO.Game as Graphics.Gloss
+import Data.IORef
+import System.IO.Unsafe
 
 data Ball = Ball {
     position :: (Float, Float),
@@ -27,8 +27,7 @@ data GameState = GameState {
     balls :: [Ball],
     colors :: [Color],
     currentMouseEvent :: Int,
-    currentCollisions :: Int,
-    bounceSoundSource :: Source
+    currentCollisions :: Int
 }
 
 magnification :: Float
@@ -70,16 +69,43 @@ window = InWindow "Bouncy balls" (scaledWindowWidth, scaledWindowHeight) (window
 background :: Color
 background = black
 
-playBounceSound :: IO ()
-playBounceSound = playFile "assets/bounce.wav"
-
-playBounceSounds :: Int -> IO ()
-playBounceSounds collisionCount = do 
-    playBounceSound
-    unless (collisionCount == 0) (playBounceSounds (collisionCount - 1))
+soundBuffer :: IORef (Maybe Sound.ALUT.Buffer)
+{-# NOINLINE soundBuffer #-}
+soundBuffer = unsafePerformIO $ newIORef Nothing
 
 replace :: Int -> a -> [a] -> [a]
 replace idx newVal xs = take idx xs ++ [newVal] ++ drop (idx+1) xs
+
+waitUntilSoundPlaybackFinished :: Source -> IO ()
+waitUntilSoundPlaybackFinished source = do 
+    state <- get (sourceState source)
+    case state of
+        Playing -> do
+            threadDelay 10000  -- 10ms
+            waitUntilSoundPlaybackFinished source
+        _ -> return ()
+
+playFile :: FilePath -> IO ()
+playFile fileName = do
+    mBuf <- readIORef soundBuffer
+    buf <- case mBuf of
+        Just b -> return b
+        Nothing -> do
+            b <- createBuffer (File fileName)
+            writeIORef soundBuffer (Just b)
+            return b
+    source <- genObjectName
+    buffer source $= Just buf
+    Sound.ALUT.play [source]
+    void $ forkIO $ do
+        --threadDelay 1000000 -- 1s
+        waitUntilSoundPlaybackFinished source
+        deleteObjectNames [source]
+
+
+
+playBounceSound :: IO ()
+playBounceSound = playFile "assets/bounce.wav"
 
 renderBall :: Ball -> Picture
 renderBall ball = translate x y $ color (colors initialGameState!!currentColor ball) $ circleSolid $ fromIntegral scaledCircleRadius
@@ -269,18 +295,6 @@ initialGameState = GameState {
 
 gameloop :: IO ()
 gameloop = Graphics.Gloss.playIO window background fps initialGameState (return . renderer) (\event gs -> return $ inputHandler event gs) iterator
-
-playFile :: FilePath -> IO ()
-playFile fileName = do
-   buf <- createBuffer (File fileName)
-   source <- genObjectName
-   buffer source $= Just buf
-   Sound.ALUT.play [source]
-   errs <- get alErrors
-   unless (null errs) $ do
-      hPutStrLn stderr (intercalate "," ([ d | ALError _ d <- errs ]))
-      exitFailure
-      --Refactor sound playback to use sources in memory directly.
 
 main :: IO ()
 main = do
