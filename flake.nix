@@ -18,7 +18,7 @@
         unstable_pkgs = unstable.legacyPackages.x86_64-linux;
 
         hPkgs =
-          pkgs.haskell.packages."ghc984"; # need to match Stackage LTS version
+          pkgs.haskell.packages."ghc967"; # need to match Stackage LTS version
                                            # from stack.yaml snapshot
 
         myDevTools = [
@@ -76,6 +76,8 @@
           # Freeglut is a dynamic runtime dependency of gloss, so we have to point `LD_LIBRARY_PATH` to it.
           LD_LIBRARY_PATH = "${pkgs.freeglut}/lib";
           # Inform stack on where to find `libGL.so` and the concrete OpenGL library.
+          
+          # Uncommenting this needs to be tested on nixos
           EXTRA_INCLUDE_DIRS="${pkgs.libGL}/include";
           EXTRA_LIB_DIRS="${pkgs.libGL}/lib ${pkgs.libGLU}/lib";
         };
