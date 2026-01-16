@@ -16,6 +16,7 @@ import Data.List
 import Sound.ALUT
 import Data.IORef
 import System.IO.Unsafe
+import System.Directory (doesFileExist)
 
 data Ball = Ball {
     position :: (Float, Float),
@@ -86,23 +87,24 @@ waitUntilSoundPlaybackFinished source = do
         _ -> return ()
 
 playFile :: FilePath -> IO ()
-playFile fileName = do
-    mBuf <- readIORef soundBuffer
-    buf <- case mBuf of
-        Just b -> return b
-        Nothing -> do
-            b <- createBuffer (File fileName)
-            writeIORef soundBuffer (Just b)
-            return b
-    source <- genObjectName
-    buffer source $= Just buf
-    Sound.ALUT.play [source]
-    void $ forkIO $ do
-        --threadDelay 1000000 -- 1s
-        waitUntilSoundPlaybackFinished source
-        deleteObjectNames [source]
-
-
+playFile fileName = doesFileExist fileName >>= \fileExists ->
+    if fileExists then do
+        mBuf <- readIORef soundBuffer
+        buf <- case mBuf of
+            Just b -> return b
+            Nothing -> do
+                b <- createBuffer (File fileName)
+                writeIORef soundBuffer (Just b)
+                return b
+        source <- genObjectName
+        buffer source $= Just buf
+        Sound.ALUT.play [source]
+        void $ forkIO $ do
+            -- threadDelay 1000000 -- 1s
+            waitUntilSoundPlaybackFinished source
+            deleteObjectNames [source]
+    else
+        return ()
 
 playBounceSound :: IO ()
 playBounceSound = playFile "assets/bounce.wav"
@@ -299,5 +301,8 @@ gameloop = Graphics.Gloss.playIO window background fps initialGameState (return 
 main :: IO ()
 main = do
     withProgNameAndArgs runALUT $ \progName args -> do
+        (Just device) <- openDevice Nothing
+        (Just context) <- createContext device []
+        currentContext $= Just context
         playFile "assets/bounce.wav"
         gameloop
