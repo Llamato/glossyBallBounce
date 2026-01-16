@@ -78,8 +78,8 @@
           # Inform stack on where to find `libGL.so` and the concrete OpenGL library.
           
           # Uncommenting this needs to be tested on nixos
-          EXTRA_INCLUDE_DIRS="${pkgs.libGL}/include";
-          EXTRA_LIB_DIRS="${pkgs.libGL}/lib ${pkgs.libGLU}/lib";
+          #EXTRA_INCLUDE_DIRS="${pkgs.libGL}/include";
+          #EXTRA_LIB_DIRS="${pkgs.libGL}/lib ${pkgs.libGLU}/lib";
         };
       });
 }
