@@ -211,7 +211,7 @@ ballWallCollisionState :: Ball -> (Bool, Bool)
 ballWallCollisionState ball = let
    posx = fst $ position ball
    posy = snd $ position ball
-   in (abs posx >= hborder , abs posy >= vborder)
+   in (abs posx >= hborder, abs posy >= vborder)
 
 handleWallCollision :: Ball -> Ball
 handleWallCollision ball = let

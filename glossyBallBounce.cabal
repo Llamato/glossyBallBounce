@@ -73,7 +73,7 @@ executable glossyBallBounce
     build-depends: 
                     , base >=4.18.0.0
                     , gloss >=1.13.2.2
-                    , containers ^>=0.6.8
+                    , containers >=0.6.8
                     , OpenAL >= 1.7.0
                     , ALUT >= 2.4.0
                     , async >= 2.2
