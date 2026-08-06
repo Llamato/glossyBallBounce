@@ -16,6 +16,10 @@ import Sound.ALUT
 import Data.IORef
 import System.IO.Unsafe
 
+--External Files
+import System.FilePath ((</>))
+import Paths_glossyBallBounce (getDataFileName)
+
 data Ball = Ball {
     position :: (Float, Float),
     velocity :: (Float, Float),
@@ -101,7 +105,10 @@ playFile fileName = do
         waitUntilSoundPlaybackFinished source
         deleteObjectNames [source]
 
-
+playSound :: String -> IO ()
+playSound name = do
+    path <- getDataFileName ("assets" </> name)
+    playFile path
 
 playBounceSound :: IO ()
 playBounceSound = playFile "assets/bounce.wav"
