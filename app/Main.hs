@@ -12,7 +12,6 @@ import qualified Graphics.Gloss.Interface.IO.Game as Graphics.Gloss
 --OpenAL
 import Control.Monad 
 import Control.Concurrent
-import Data.List
 import Sound.ALUT
 import Data.IORef
 import System.IO.Unsafe
