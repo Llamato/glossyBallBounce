@@ -109,7 +109,7 @@ playFile fileName = do
 
 findAsset :: FilePath -> IO (Maybe FilePath)
 findAsset filename = do
-    let paths = map (\dirpath -> dirpath </> filename) [ "assets", "share/glossy-ball-demo"]
+    let paths = map (\dirpath -> dirpath </> filename) [ "./assets", "share/glossy-ball-demo/assets"]
     exists <- mapM doesFileExist paths
     return $ listToMaybe [path | (path, True) <- zip paths exists]
 
