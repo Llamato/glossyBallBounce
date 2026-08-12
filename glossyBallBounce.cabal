@@ -78,6 +78,7 @@ executable glossyBallBounce
                     , ALUT >= 2.4.0
                     , async >= 2.2
                     , filepath >= 1.5.4.0
+                    , directory
 
     -- Directories containing source files.
     hs-source-dirs:   app

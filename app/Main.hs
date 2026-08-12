@@ -10,7 +10,7 @@ import Graphics.Gloss.Interface.IO.Game
 import qualified Graphics.Gloss.Interface.IO.Game as Graphics.Gloss
 
 --OpenAL
-import Control.Monad 
+import Control.Monad (filterM, when, void)
 import Control.Concurrent
 import Sound.ALUT
 import Data.IORef
@@ -19,6 +19,8 @@ import System.IO.Unsafe
 --External Files
 import System.FilePath ((</>))
 import Paths_glossyBallBounce (getDataFileName)
+import System.Directory (doesFileExist)
+import Data.Maybe
 
 data Ball = Ball {
     position :: (Float, Float),
@@ -105,13 +107,18 @@ playFile fileName = do
         waitUntilSoundPlaybackFinished source
         deleteObjectNames [source]
 
-playSound :: String -> IO ()
-playSound name = do
-    path <- getDataFileName ("assets" </> name)
-    playFile path
+findAsset :: FilePath -> IO (Maybe FilePath)
+findAsset filename = do
+    let paths = map (\dirpath -> dirpath </> filename) [ "assets", "share/glossy-ball-demo"]
+    exists <- mapM doesFileExist paths
+    return $ listToMaybe [path | (path, True) <- zip paths exists]
 
 playBounceSound :: IO ()
-playBounceSound = playFile "assets/bounce.wav"
+playBounceSound = do
+    maybePath <- findAsset "bounce.wav"
+    case maybePath of
+        Just path -> playFile path
+        Nothing -> putStrLn "Warning: bounce.wav not found"
 
 renderBall :: Ball -> Picture
 renderBall ball = translate x y $ color (colors initialGameState!!currentColor ball) $ circleSolid $ fromIntegral scaledCircleRadius
@@ -305,5 +312,5 @@ gameloop = Graphics.Gloss.playIO window background fps initialGameState (return 
 main :: IO ()
 main = do
     withProgNameAndArgs runALUT $ \progName args -> do
-        playFile "assets/bounce.wav"
+        playBounceSound
         gameloop
